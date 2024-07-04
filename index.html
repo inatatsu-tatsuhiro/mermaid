@@ -3,17 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mermaid Graph to Image Generator</title>
+    <title>Mermaid Graph to Aspect Ratio Preserved Image Generator</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+      #outputImage {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        margin: 20px 0;
+      }
+    </style>
   </head>
   <body>
     <textarea id="mermaidInput" rows="10" cols="50"></textarea>
     <button onclick="generateGraphImage()">画像生成</button>
     <div id="mermaidGraph"></div>
-    <img id="outputImage" style="max-width: 100%" />
+    <img id="outputImage" />
 
     <script>
-      mermaid.initialize({ startOnLoad: true })
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: 'default',
+        flowchart: {
+          curve: 'basis'
+        }
+      })
 
       async function generateGraphImage() {
         const input = document.getElementById('mermaidInput').value
@@ -22,39 +36,60 @@
 
         // SVGとしてグラフを生成
         const { svg } = await mermaid.render('graphDiv', input)
-        output.innerHTML = svg
 
-        // SVGをCanvasに描画
-        const svgElement = output.querySelector('svg')
-        const canvas = await svgToCanvas(svgElement)
+        // SVGを高解像度のCanvasに描画
+        const canvas = await svgToHighResCanvas(svg)
 
         // CanvasからPNG画像を生成
         const dataUrl = canvas.toDataURL('image/png')
 
-        // 画像のダウンロードリンクを作成（オプション）
+        // 画像を表示
+        const img = document.getElementById('outputImage')
+        img.src = dataUrl
+
+        // 画像のダウンロードリンクを作成
         const downloadLink = document.createElement('a')
         downloadLink.href = dataUrl
-        downloadLink.download = 'mermaid_graph.png'
-        downloadLink.textContent = '画像をダウンロード'
+        downloadLink.download = `mermaid-${new Date()}.png`
+        downloadLink.textContent = 'ダウンロード'
         output.appendChild(downloadLink)
       }
 
-      async function svgToCanvas(svgElement) {
-        const svgData = new XMLSerializer().serializeToString(svgElement)
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-
+      async function svgToHighResCanvas(svgString) {
         return new Promise((resolve) => {
+          const parser = new DOMParser()
+          const svgDoc = parser.parseFromString(svgString, 'image/svg+xml')
+          const svgElement = svgDoc.documentElement
+
+          // viewBox属性から寸法を取得
+          const viewBox = svgElement.getAttribute('viewBox')
+          let width, height
+          if (viewBox) {
+            const [, , w, h] = viewBox.split(' ').map(Number)
+            width = w
+            height = h
+          } else {
+            // viewBoxがない場合は、width/height属性を使用
+            width = parseInt(svgElement.getAttribute('width') || 800)
+            height = parseInt(svgElement.getAttribute('height') || 600)
+          }
+
+          const scale = 2 // 解像度を2倍に
+
+          const canvas = document.createElement('canvas')
+          canvas.width = width * scale
+          canvas.height = height * scale
+
+          const ctx = canvas.getContext('2d')
+          ctx.scale(scale, scale)
+
           const img = new Image()
           img.onload = () => {
-            canvas.width = img.width
-            canvas.height = img.height
-            ctx.drawImage(img, 0, 0)
+            ctx.drawImage(img, 0, 0, width, height)
             resolve(canvas)
           }
           img.src =
-            'data:image/svg+xml;base64,' +
-            btoa(unescape(encodeURIComponent(svgData)))
+            'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString)
         })
       }
     </script>
